@@ -99,6 +99,18 @@ ISR(INT1_vect)							//on place 2 in interrupt vector table
 {
 	total_spokes_counter++;
 	inst_spokes_counter++;
+	//for instantaneous speed
+	if(inst_spokes_counter==1)				
+	{
+		count_t1=inst_16ms_counter;
+	}
+	else if(inst_spokes_counter==10)		//here completing one cycle
+	{
+		count_t2=inst_16ms_counter;
+		inst_16ms_counter=0;				//reset instantaneous time counter
+		inst_spokes_counter=0;				//reset instantaneous spokes counter
+	}
+	
 	if(total_spokes_counter==1)
 	{
 		count_avg_t1=total_16ms_counter;
@@ -108,21 +120,10 @@ ISR(INT1_vect)							//on place 2 in interrupt vector table
 	{
 		count_avg_t2=total_16ms_counter;
 		avg_time=ceil((count_avg_t2-count_avg_t1)*0.016);	//time counters difference * 16ms
-		total_16ms_counter=0;				//reset time counter
-		total_spokes_counter=0;				//reset spokes counter
+		total_16ms_counter=0;								//reset time counter
+		total_spokes_counter=0;								//reset spokes counter
 	}
-	//for instantaneous speed
-	if(inst_spokes_counter==1)				//here completing one cycle
-	{
-		count_t1=inst_16ms_counter;
-		inst_spokes_counter++;
-	}
-	else if(inst_spokes_counter==10)
-	{
-		count_t2=inst_16ms_counter;
-		inst_16ms_counter=0;				//reset instantaneous time counter
-		inst_spokes_counter=0;				//reset instantaneous spokes counter
-	}
+	
 }
 
 void Calculate_speeds_distance()
@@ -136,7 +137,7 @@ void Calculate_speeds_distance()
 			elapsed_distance_cm=0;
 		}
 	}
-	if(inst_16ms_counter<35)
+	if(inst_16ms_counter<35)							//The Maximum Expected Period "@minimum Velocity"
 	{
 		period=(count_t2-count_t1)*16;					//to calculate difference in time between two pulses.....16 standing for 16ms
 		if(period>0)
