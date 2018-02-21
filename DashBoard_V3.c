@@ -6,46 +6,50 @@
  */ 
 
 #include "config.h"
+char int_buff[7]={0};   	 	// using it in communication for converting integer to string function
 
 int main(void)
 { 
    _delay_ms(500);
+   //Indication LED:
+   sbi(DDRB,PB0);				
+   sbi(PORTB,PB0);
+   //=======================
+   sei(); 						//turn on global interrupts
+   //LCD Initialization
    lcd_init_4bits();
-   sei(); 			//turn on global interrupts
-   //===timer0:
+   //=================
+   //===Stop Watch Initialization:
    init_timer0();
    //====================
+   //Speed Sensor Initialization:
    init_timer2();		//initialize timer0 with ctc mode and overflow every 16ms
    init_ext_interrupts();
+   //=============================
    //=====Throttle Sensor:
    init_ThrottleThump();
    //=========================
    //=======servo:
    init_servo();
+   duty_cycle=(max_deg-min_deg)/(1024);			//by cross multiplying 
    //============================
-
-   duty_cycle=(max_deg-min_deg)/(1024);			//by cross multiplying    
+   
 while (1)
 {
-	 Display_constants();
-	Display_time();
-	Speeds_Calculation();
+	Display_constants();
+	Calculate_speeds_distance();
 	Display_speeds_distance();
+	Display_time();
+	Display_throttle();
+	//UART_send_online();
 }  
    return 0;
 }
 ISR(ADC_vect)							//on place 22 in interrupt vector table
 {
 	move_servo();
-	Display_throttle();
 	sbi(ADCSRA,ADSC);
 }					
-ISR(INT1_vect)							//on place 2 in interrupt vector table
-{
-	total_spokes_counter++;
-	inst_spokes_counter++;
-	
-}
 ISR(TIMER0_OVF_vect)
 {
 	couter_prescaling++;
@@ -69,7 +73,7 @@ ISR(TIMER2_COMPA_vect)
 
 
 //================Speed Sensor functions implementation 
- void init_timer2()			//CALCUTE TIME FOR SPEED CALCULATIONS
+ void init_timer2()						//CALCUTE TIME FOR SPEED CALCULATIONS
 {  
   //ctc mode
    sbi(TCCR2A,WGM21);
@@ -87,13 +91,14 @@ void init_ext_interrupts()
    cbi(DDRD,PD3);			//sensor input
    sbi(PORTD,PD3);			//enable pull up resistor
    //EICRA|=(1<<ISC01)|(1<<ISC00);	//set triger INT0 for rising edge mode
-   EICRA|=(1<<ISC11);			//set trigger INT0 for falling edge mode
+   EICRA|=(1<<ISC11);			//set trigger INT1 for falling edge mode
    //EIMSK|=(1<<INT0);			//turn on INT0
    EIMSK|=(1<<INT1);			//turn on INT1
 }
-void Speeds_Calculation()
+ISR(INT1_vect)							//on place 2 in interrupt vector table
 {
-	//For Average Speed
+	total_spokes_counter++;
+	inst_spokes_counter++;
 	if(total_spokes_counter==1)
 	{
 		count_avg_t1=total_16ms_counter;
@@ -107,7 +112,7 @@ void Speeds_Calculation()
 		total_spokes_counter=0;				//reset spokes counter
 	}
 	//for instantaneous speed
-	if(inst_spokes_counter==0)				//here completing one cycle
+	if(inst_spokes_counter==1)				//here completing one cycle
 	{
 		count_t1=inst_16ms_counter;
 		inst_spokes_counter++;
@@ -117,23 +122,27 @@ void Speeds_Calculation()
 		count_t2=inst_16ms_counter;
 		inst_16ms_counter=0;				//reset instantaneous time counter
 		inst_spokes_counter=0;				//reset instantaneous spokes counter
+	}
+}
+
+void Calculate_speeds_distance()
+{
+	if(inst_spokes_counter==10)
+	{
 		elapsed_distance_cm+=perimeter_cm;			//every 10 pulses"one cycle" increase elasped distance by 157cm
-		if(elapsed_distance_cm>=120000)
+		if((elapsed_distance_cm>=120000) && (elapsed_distance_cm<125000))
 		{
 			laps++;
 			elapsed_distance_cm=0;
 		}
 	}
-}
-void Calculate_speeds_distance()
-{
 	if(inst_16ms_counter<35)
 	{
 		period=(count_t2-count_t1)*16;					//to calculate difference in time between two pulses.....16 standing for 16ms
 		if(period>0)
-		freq=(1000.00/period);						//freq=1/period...but 1000/period in HZ
+			freq=(1000.00/period);						//freq=1/period...but 1000/period in HZ
 		else
-		freq=0;
+			freq=0;
 		inst_speed=ceil((perimeter_cm*freq/100)*3.6);			//instantaneous speed in km/hour
 		avg_speed=ceil((avg_distance_m/avg_time)*3.6); 			//average speed in km/hour
 		elapsed_distance_m=(int)elapsed_distance_cm/100;
@@ -145,8 +154,7 @@ void Calculate_speeds_distance()
 }
 void Display_speeds_distance()
 {
-		Calculate_speeds_distance();
-	
+	//Calculate_speeds_distance();
 	if(inst_speed>9)
 	{
 		send_int_withXY(0,1,inst_speed,2);
@@ -176,6 +184,40 @@ void Display_speeds_distance()
 	}
 	
 	//send_int_withXY(11,2,laps,2);
+}
+void Speeds_Calculation()
+{
+	//For Average Speed
+	if(total_spokes_counter==1)
+	{
+		count_avg_t1=total_16ms_counter;
+		
+	}
+	else if(total_spokes_counter==200)
+	{
+		count_avg_t2=total_16ms_counter;
+		avg_time=ceil((count_avg_t2-count_avg_t1)*0.016);	//time counters difference * 16ms
+		total_16ms_counter=0;				//reset time counter
+		total_spokes_counter=0;				//reset spokes counter
+	}
+	//for instantaneous speed
+	if(inst_spokes_counter==1)				//here completing one cycle
+	{
+		count_t1=inst_16ms_counter;
+		inst_spokes_counter++;
+	}
+	else if(inst_spokes_counter==10)
+	{
+		count_t2=inst_16ms_counter;
+		inst_16ms_counter=0;				//reset instantaneous time counter
+		inst_spokes_counter=0;				//reset instantaneous spokes counter
+		elapsed_distance_cm+=perimeter_cm;			//every 10 pulses"one cycle" increase elasped distance by 157cm
+		if((elapsed_distance_cm>=120000) && (elapsed_distance_cm<125000))
+		{
+			laps++;
+			elapsed_distance_cm=0;
+		}
+	}
 }
 
 //===============================================================
@@ -433,3 +475,89 @@ void Display_time()
 	}
 }
 //===================================================
+
+void UART_init(void)
+{
+//	UBRR0H = (uint8_t)(BAUD_PRESCALLER>>8);
+//	UBRR0L = (uint8_t)(BAUD_PRESCALLER);
+	UBRR0 = 103;
+	UCSR0B = (1<<RXEN0)|(1<<TXEN0);
+	UCSR0C = (3<<UCSZ00);
+}
+unsigned char UART_receive(void)
+{
+	while(!(UCSR0A & (1<<RXC0)));
+	return UDR0;
+	
+}
+
+void UART_send( unsigned char data)
+{
+	while(!(UCSR0A & (1<<UDRE0)));
+	UDR0 = data;
+}
+
+void WriteUART(uint16_t data)
+{
+	while(!(UCSR0A & (1<<0x05)));	//Wait for empty transmit buffer
+	UDR0 = data;		//Write data into the buffer and transmit
+}
+
+ void UART_putstring(char* StringPtr)
+ {
+	 while(*StringPtr != 0x00)
+	 {
+		 UART_send(*StringPtr);
+		 StringPtr++;
+	 }
+ }
+void UART_send_online()
+{
+	UART_send('s');
+	//UART_putstring("inst_speed:   ");
+	itoa(inst_speed,int_buff,10);
+	UART_putstring(int_buff);
+	UART_send('a');
+	//UART_putstring("avg_speed:   ");
+	itoa(avg_speed,int_buff,10);
+	UART_putstring(int_buff);
+	UART_send('b');
+	//UART_putstring("laps:   ");
+	itoa(laps,int_buff,10);
+	UART_putstring(int_buff);
+	UART_send('c');
+	//UART_putstring("throttle_value:   ");
+	itoa(lcd_throttle_value,int_buff,10);
+	UART_putstring(int_buff);
+	UART_send('d');
+}
+ 
+
+/*
+void UART_putstring(char* StringPtr)
+{
+	uint8_t counter=0;
+	char * data;
+	while(*StringPtr!=0x00)
+	{
+		counter++;
+	}
+	if (counter ==1)
+	{
+		*data = '0';
+		//data++;
+		*(data+1) = *StringPtr;
+		*(data+2)='\0';
+	}
+	else
+	{
+		data = StringPtr;
+		
+	}
+	while(*data != 0x00)
+	{
+		UART_send(*data);
+		data++;
+	}
+}
+*/

@@ -102,5 +102,11 @@ ISR(TIMER0_OVF_vect);
 ISR(INT1_vect);							//on place 2 in interrupt vector table
 ISR(ADC_vect);
 
-
+//for communication purposes
+void UART_init(void);
+unsigned char UART_receive(void);
+void UART_send( unsigned char data);
+void WriteUART(uint16_t data);
+void UART_putstring(char* StringPtr);
+void UART_send_online();
 #endif /* CONFIG_H_ */
