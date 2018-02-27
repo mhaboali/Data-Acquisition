@@ -65,10 +65,10 @@ volatile unsigned int count_t1=0,count_t2=0;				//for handling 2 values from tim
 volatile unsigned int count_avg_t1=0,count_avg_t2=0;		//for handling 2 values from timer counter for calculating Average speed
 volatile float        time_diff=0,freq=0,period=0;			//for handling difference in time between 2 pulses
 volatile unsigned int avg_time=0,total_spokes_counter=0,inst_spokes_counter=0;			//count instantaneous pulses coming from ir sensor
-volatile unsigned int inst_16ms_counter =0,total_16ms_counter=0;			//count time for capture pulses time
+volatile unsigned int inst_16ms_counter =0,total_16ms_counter=0,Total_distance_cm=0;			//count time for capture pulses time
 volatile int      elapsed_distance_cm=0,elapsed_distance_m=0,inst_speed=0,avg_speed=0;
 
-void Speeds_Calculation();
+//void Speeds_Calculation();
 void Calculate_speeds_distance();
 void Display_speeds_distance();
 //for speed sensor signal and calculating the Ins speed
@@ -77,7 +77,7 @@ void init_timer2();						//initializing timer2 with out compare mode
 //=====================================================================================
 
 //=======Servo By Throttle Thumb:
-void			init_ThrottleThump();
+void			init_ThrottleThumb();
 uint16_t		Read_Throttle(uint8_t adcx) ;
 void			Display_throttle();
 volatile float	lcd_throttle_value=0;
@@ -101,7 +101,7 @@ ISR(TIMER2_COMPA_vect);
 ISR(TIMER0_OVF_vect);
 ISR(INT1_vect);							//on place 2 in interrupt vector table
 ISR(ADC_vect);
-
+/*
 //for communication purposes
 void UART_init(void);
 unsigned char UART_receive(void);
@@ -109,4 +109,5 @@ void UART_send( unsigned char data);
 void WriteUART(uint16_t data);
 void UART_putstring(char* StringPtr);
 void UART_send_online();
+*/
 #endif /* CONFIG_H_ */

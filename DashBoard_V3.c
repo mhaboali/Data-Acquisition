@@ -15,7 +15,7 @@ int main(void)
    sbi(DDRB,PB0);				
    sbi(PORTB,PB0);
    //=======================
-   sei(); 						//turn on global interrupts
+   sei(); 									//turn on global interrupts
    //LCD Initialization
    lcd_init_4bits();
    //=================
@@ -23,35 +23,37 @@ int main(void)
    init_timer0();
    //====================
    //Speed Sensor Initialization:
-   init_timer2();		//initialize timer0 with ctc mode and overflow every 16ms
-   init_ext_interrupts();
+   init_timer2();								//initialize timer0 with ctc mode and overflow every 16ms
+   init_ext_interrupts();						//Initialize Pin PD3 For Speed sensor signal
    //=============================
    //=====Throttle Sensor:
-   init_ThrottleThump();
+   init_ThrottleThumb();
    //=========================
    //=======servo:
-   init_servo();
-   duty_cycle=(max_deg-min_deg)/(1024);			//by cross multiplying 
+   init_servo();								//Initialize Servo with 50 HZ And 45 degree motion.
+   duty_cycle=(max_deg-min_deg)/(1024);			//by cross multiplication.
    //============================
+   //UART_init();
    
 while (1)
 {
-	Display_constants();
-	Calculate_speeds_distance();
-	Display_speeds_distance();
-	Display_time();
-	Display_throttle();
+	Display_constants();						//Display Written Words On LCD
+	Calculate_speeds_distance();				//By Calculating Frequency of Wheel
+	Display_speeds_distance();			
+	Display_time();								//Display Stop Watch ON LCD
+	Display_throttle();							//Display Throttle Position
 	//UART_send_online();
 }  
    return 0;
 }
 ISR(ADC_vect)							//on place 22 in interrupt vector table
 {
+	//Get Here After Every ADC conversion
 	move_servo();
-	sbi(ADCSRA,ADSC);
+	sbi(ADCSRA,ADSC);					//To Start New ADC conversion
 }					
 ISR(TIMER0_OVF_vect)
-{
+{	//Get Here Every 4 ms For Calculating Real Time Stop Watch
 	couter_prescaling++;
 	if(couter_prescaling==243)		//240 for actual timing
 	{
@@ -66,12 +68,11 @@ ISR(TIMER0_OVF_vect)
 }
 ISR(TIMER2_COMPA_vect)
 {
-	TCNT2=0;
-	inst_16ms_counter++;					//for counting how many 16ms through one cycle
+	//Get Here Every 16ms For Measuring speed
+	TCNT2=0;							//To Reset The Value In Timer Counter Register
+	inst_16ms_counter++;				//for counting how many 16ms through one cycle
 	total_16ms_counter++;				//counting total time through a number of cycles
 }
-
-
 //================Speed Sensor functions implementation 
  void init_timer2()						//CALCUTE TIME FOR SPEED CALCULATIONS
 {  
@@ -84,78 +85,82 @@ ISR(TIMER2_COMPA_vect)
    //ENALBE outcompare interrupt:
    sbi(TIMSK2,OCIE2A);
    TCNT2=0x00;
-   OCR2A=255;				//will overflow every 16ms
+   OCR2A=255;				//will Get Into ISR every 16ms
 } 
 void init_ext_interrupts()
 {
-   cbi(DDRD,PD3);			//sensor input
-   sbi(PORTD,PD3);			//enable pull up resistor
-   //EICRA|=(1<<ISC01)|(1<<ISC00);	//set triger INT0 for rising edge mode
-   EICRA|=(1<<ISC11);			//set trigger INT1 for falling edge mode
-   //EIMSK|=(1<<INT0);			//turn on INT0
-   EIMSK|=(1<<INT1);			//turn on INT1
+   cbi(DDRD,PD3);						//sensor input
+   sbi(PORTD,PD3);						//enable pull up resistor
+   //EICRA|=(1<<ISC01)|(1<<ISC00);		//set triger INT0 for rising edge mode
+   EICRA|=(1<<ISC11);					//set trigger INT1 for falling edge mode
+   //EIMSK|=(1<<INT0);					//turn on INT0
+   EIMSK|=(1<<INT1);					//turn on INT1
 }
 ISR(INT1_vect)							//on place 2 in interrupt vector table
 {
-	total_spokes_counter++;
+	//Get Here On each spoke Of The wheel
 	inst_spokes_counter++;
 	//for instantaneous speed
 	if(inst_spokes_counter==1)				
 	{
-		count_t1=inst_16ms_counter;
+		count_t1=inst_16ms_counter;					//Capture Timer Counter @ First Spoke
 	}
-	else if(inst_spokes_counter==10)		//here completing one cycle
+	else if(inst_spokes_counter==10)				//here completing one cycle
 	{
-		count_t2=inst_16ms_counter;
-		inst_16ms_counter=0;				//reset instantaneous time counter
-		inst_spokes_counter=0;				//reset instantaneous spokes counter
+		count_t2=inst_16ms_counter;					//Capture Timer Counter @ 10th spokes
+		elapsed_distance_cm+=perimeter_cm;			//every 10 pulses"one cycle" increase elapsed distance by 157cm
+		Total_distance_cm+=perimeter_cm;			//integrating Total Distance in centimeter
+		inst_16ms_counter=0;						//reset instantaneous time counter
+		inst_spokes_counter=0;						//reset instantaneous spokes counter
 	}
-	
-	if(total_spokes_counter==1)
-	{
-		count_avg_t1=total_16ms_counter;
-		
-	}
-	else if(total_spokes_counter==200)
-	{
-		count_avg_t2=total_16ms_counter;
-		avg_time=ceil((count_avg_t2-count_avg_t1)*0.016);	//time counters difference * 16ms
-		total_16ms_counter=0;								//reset time counter
-		total_spokes_counter=0;								//reset spokes counter
-	}
+	//if(total_spokes_counter==1)
+	//{
+	//count_avg_t1=total_16ms_counter;
+	//
+	//}
+	//else if(total_spokes_counter==200)
+	//{
+	//count_avg_t2=total_16ms_counter;
+	//avg_time=ceil((count_avg_t2-count_avg_t1)*0.016);	//time counters difference * 16ms
+	//total_16ms_counter=0;								//reset time counter
+	//total_spokes_counter=0;								//reset spokes counter
+	//}
 	
 }
-
 void Calculate_speeds_distance()
 {
-	if(inst_spokes_counter==10)
-	{
-		elapsed_distance_cm+=perimeter_cm;			//every 10 pulses"one cycle" increase elasped distance by 157cm
-		if((elapsed_distance_cm>=120000) && (elapsed_distance_cm<125000))
-		{
-			laps++;
-			elapsed_distance_cm=0;
-		}
-	}
 	if(inst_16ms_counter<35)							//The Maximum Expected Period "@minimum Velocity"
 	{
-		period=(count_t2-count_t1)*16;					//to calculate difference in time between two pulses.....16 standing for 16ms
+		period=(count_t2-count_t1)*16;					//to calculate difference in time Through 10 pulses.....16 stands for 16ms
 		if(period>0)
 			freq=(1000.00/period);						//freq=1/period...but 1000/period in HZ
 		else
 			freq=0;
 		inst_speed=ceil((perimeter_cm*freq/100)*3.6);			//instantaneous speed in km/hour
-		avg_speed=ceil((avg_distance_m/avg_time)*3.6); 			//average speed in km/hour
-		elapsed_distance_m=(int)elapsed_distance_cm/100;
 	}
 	else
 	{
 		inst_speed=0;
 	}
+	elapsed_distance_m=Total_distance_cm/100;
+	avg_time=minutes*60+seconds;							//Calculate Total elapsed Time
+	if(avg_time>0)
+	avg_speed=ceil((elapsed_distance_m/avg_time)*3.6); 			//average speed in km/hour
+	else
+	avg_speed=0;
+	if((elapsed_distance_cm>=120000) && (elapsed_distance_cm<125000))			//Increase Laps and reset elapsed Distance
+	{
+		laps++;
+		elapsed_distance_cm=0;
+	}
 }
 void Display_speeds_distance()
 {
 	//Calculate_speeds_distance();
+	if(inst_speed>35)
+	{
+		send_int_withXY(0,1,37,2);
+	}
 	if(inst_speed>9)
 	{
 		send_int_withXY(0,1,inst_speed,2);
@@ -164,6 +169,10 @@ void Display_speeds_distance()
 	{
 		send_str_4bits_withXY(0,1,"0");
 		send_int_withXY(1,1,inst_speed,1);
+	}
+	if(avg_speed>25)
+	{
+		send_int_withXY(9,1,27,2);
 	}
 	if(avg_speed>9)
 	{
@@ -185,40 +194,6 @@ void Display_speeds_distance()
 	}
 	
 	//send_int_withXY(11,2,laps,2);
-}
-void Speeds_Calculation()
-{
-	//For Average Speed
-	if(total_spokes_counter==1)
-	{
-		count_avg_t1=total_16ms_counter;
-		
-	}
-	else if(total_spokes_counter==200)
-	{
-		count_avg_t2=total_16ms_counter;
-		avg_time=ceil((count_avg_t2-count_avg_t1)*0.016);	//time counters difference * 16ms
-		total_16ms_counter=0;				//reset time counter
-		total_spokes_counter=0;				//reset spokes counter
-	}
-	//for instantaneous speed
-	if(inst_spokes_counter==1)				//here completing one cycle
-	{
-		count_t1=inst_16ms_counter;
-		inst_spokes_counter++;
-	}
-	else if(inst_spokes_counter==10)
-	{
-		count_t2=inst_16ms_counter;
-		inst_16ms_counter=0;				//reset instantaneous time counter
-		inst_spokes_counter=0;				//reset instantaneous spokes counter
-		elapsed_distance_cm+=perimeter_cm;			//every 10 pulses"one cycle" increase elasped distance by 157cm
-		if((elapsed_distance_cm>=120000) && (elapsed_distance_cm<125000))
-		{
-			laps++;
-			elapsed_distance_cm=0;
-		}
-	}
 }
 
 //===============================================================
@@ -341,15 +316,16 @@ void Display_constants()
 {
 	 send_str_4bits_withXY(2,1," Km/h");		//for instantaneous speed
 	 send_str_4bits_withXY(7,1,"  ");
-	 send_str_4bits_withXY(8,2,"LAPs");
 	 send_str_4bits_withXY(11,1," Km/h");
 	 send_str_4bits_withXY(2,2,":");		//for stopwatch
+	 send_str_4bits_withXY(5,2,"  ");
+	 send_str_4bits_withXY(8,2,"LAPs");
 	 send_str_4bits_withXY(15,2,"%");		//for Throttle
 }
 //===================================================
 
 //================Thumb Throttle Functions implementation
-void init_ThrottleThump()
+void init_ThrottleThumb()
 {  
    //voltage reference:(with AVCC reference):
     sbi(ADMUX,REFS0);   
@@ -406,6 +382,10 @@ void Display_throttle()
 {
    digital_throt_sensor_read=Read_Throttle(3);
    lcd_throttle_value=floorf(((digital_throt_sensor_read-161)/(1023.0))*99*1.45);
+   if(lcd_throttle_value>=99)
+   {
+	   send_int_withXY(13,2,99,2);
+   }
    
    if(lcd_throttle_value>9)
    {
@@ -476,7 +456,7 @@ void Display_time()
 	}
 }
 //===================================================
-
+/*
 void UART_init(void)
 {
 //	UBRR0H = (uint8_t)(BAUD_PRESCALLER>>8);
@@ -534,7 +514,7 @@ void UART_send_online()
 }
  
 
-/*
+
 void UART_putstring(char* StringPtr)
 {
 	uint8_t counter=0;
